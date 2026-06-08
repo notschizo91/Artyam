@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Artyam — STL Articulation Tool</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="sidebar-header">
+          <h1>Artyam</h1>
+          <p class="subtitle">Print-in-place Flexi Joints</p>
+        </div>
+
+        <div class="section">
+          <label class="upload-btn" id="upload-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            Load STL File
+            <input type="file" id="file-input" accept=".stl" hidden />
+          </label>
+          <div id="file-name" class="file-name">No file loaded</div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <span>Joints</span>
+            <span id="joint-count" class="badge">0</span>
+          </div>
+          <p class="hint" id="click-hint">Load an STL then click the mesh to place joints</p>
+          <div id="joint-list"></div>
+        </div>
+
+        <div class="section" id="joint-controls-section" style="display:none">
+          <div class="section-header">
+            <span>Selected Joint</span>
+            <button id="delete-joint-btn" class="btn-danger" title="Delete joint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+              </svg>
+              Delete
+            </button>
+          </div>
+
+          <div class="control-group">
+            <label>Position X <span class="val" id="val-px">0.0</span></label>
+            <input type="range" id="ctrl-px" min="-50" max="50" step="0.1" value="0" />
+          </div>
+          <div class="control-group">
+            <label>Position Y <span class="val" id="val-py">0.0</span></label>
+            <input type="range" id="ctrl-py" min="-50" max="50" step="0.1" value="0" />
+          </div>
+          <div class="control-group">
+            <label>Position Z <span class="val" id="val-pz">0.0</span></label>
+            <input type="range" id="ctrl-pz" min="-50" max="50" step="0.1" value="0" />
+          </div>
+          <div class="control-group">
+            <label>Ring Scale <span class="val" id="val-scale">1.00</span></label>
+            <input type="range" id="ctrl-scale" min="0.2" max="3.0" step="0.05" value="1.0" />
+          </div>
+          <div class="control-group">
+            <label>Thickness <span class="val" id="val-thick">2.0</span> mm</label>
+            <input type="range" id="ctrl-thick" min="0.5" max="8.0" step="0.1" value="2.0" />
+          </div>
+          <div class="control-group">
+            <label>Tilt Axis</label>
+            <div class="axis-btns">
+              <button class="axis-btn active" data-axis="x">X</button>
+              <button class="axis-btn" data-axis="y">Y</button>
+              <button class="axis-btn" data-axis="z">Z</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Tilt <span class="val" id="val-tilt">0</span>°</label>
+            <input type="range" id="ctrl-tilt" min="-45" max="45" step="1" value="0" />
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="section export-section">
+          <button id="export-btn" class="btn-primary" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export STL
+          </button>
+          <div id="status" class="status"></div>
+        </div>
+      </aside>
+
+      <main id="viewport">
+        <canvas id="three-canvas"></canvas>
+        <div id="overlay-hint" class="overlay-hint">
+          <div class="hint-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+            <p>Load an STL file to begin</p>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
