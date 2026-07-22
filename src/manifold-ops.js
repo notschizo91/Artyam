@@ -55,22 +55,7 @@ export function manifoldToThreeGeom(manifold) {
 }
 
 /**
- * Build a flat washer (hollow cylinder) Manifold.
- * Created in the XY plane, centered at origin, Z-axis is the ring axis.
- */
-function createWasherManifold(innerRadius, outerRadius, height, segments = 64) {
-  const { Manifold } = manifoldAPI;
-  const outer = Manifold.cylinder(height, outerRadius, outerRadius, segments, true);
-  if (innerRadius <= 0.001) return outer;
-  const inner = Manifold.cylinder(height * 1.01, innerRadius, innerRadius, segments, true);
-  const washer = outer.subtract(inner);
-  inner.delete();
-  outer.delete();
-  return washer;
-}
-
-/**
- * Build a 4×4 column-major transform array for manifold.
+ * Build a 4Ã—4 column-major transform array for manifold.
  * Aligns the ring's Z-axis to `normal`, centered at `position`.
  */
 function makeRingTransform(position, normal, tiltAxis, tiltDeg) {
@@ -93,12 +78,12 @@ function makeRingTransform(position, normal, tiltAxis, tiltDeg) {
 
 /**
  * Create a joint cutter and a ring insert for one joint.
- * Returns { cutter, ring } — both Manifold objects.
+ * Returns { cutter, ring } â€” both Manifold objects.
  *
  * The cutter is a solid disk (no inner hole) that cleanly separates the mesh.
  * The ring is a washer (hollow cylinder) that floats in the groove with 0.3mm clearance.
  */
-export function createJointManifolds(params) {
+export function createJointManifolds(params, modelExtent) {
   const {
     position,
     normal,
@@ -109,30 +94,71 @@ export function createJointManifolds(params) {
     tiltDeg = 0,
   } = params;
 
-  const CLEARANCE = 0.3;
-  const SEGMENTS = 64;
+  const { Manifold } = manifoldAPI;
+  const clearance = 0.4;
+  const segments = 64;
+  const localRadius = Math.max(2.5, measuredRadius * scale);
+  const ballRadius = Math.max(1.8, Math.min(localRadius * 0.34, 12));
+  const wall = Math.max(1.2, Math.min(thickness, ballRadius * 0.55));
+  const cavityRadius = ballRadius + clearance;
+  const socketRadius = cavityRadius + wall;
+  const stemRadius = Math.max(1.2, ballRadius * 0.38);
+  const halfDepth = Math.max(modelExtent, socketRadius * 4);
 
-  const R = measuredRadius * scale;
+  const transformAt = (z) => {
+    const p = position.clone().add(normal.clone().normalize().multiplyScalar(z));
+    return makeRingTransform(p, normal, tiltAxis, tiltDeg);
+  };
 
-  // Ring: sits inside the groove, captured between the two mesh halves
-  const ringOuter = R * 0.88;
-  const ringInner = R * 0.28;
+  // Two clipping volumes split the source into independently moving bodies,
+  // leaving a real printable gap at the chosen plane.
+  const boxSize = halfDepth * 2;
+  const negativeBoxRaw = Manifold.cube([boxSize, boxSize, halfDepth], true);
+  const positiveBoxRaw = Manifold.cube([boxSize, boxSize, halfDepth], true);
+  const negativeBox = negativeBoxRaw.transform(transformAt(-(halfDepth + clearance) / 2));
+  const positiveBox = positiveBoxRaw.transform(transformAt((halfDepth + clearance) / 2));
+  negativeBoxRaw.delete();
+  positiveBoxRaw.delete();
 
-  // Cutter: slightly larger than ring + clearance, no inner hole (ensures clean mesh separation)
-  const cutOuter  = R + CLEARANCE + 0.5;
-  const cutHeight = thickness + CLEARANCE * 2;
+  const ballRaw = Manifold.sphere(ballRadius, segments);
+  const cavityRaw = Manifold.sphere(cavityRadius, segments);
+  const socketOuterRaw = Manifold.sphere(socketRadius, segments);
+  const ball = ballRaw.transform(transformAt(0));
+  const cavity = cavityRaw.transform(transformAt(0));
+  const socketOuter = socketOuterRaw.transform(transformAt(0));
+  ballRaw.delete();
+  cavityRaw.delete();
+  socketOuterRaw.delete();
 
-  const rawCutter = createWasherManifold(0, cutOuter, cutHeight, SEGMENTS);
-  const rawRing   = createWasherManifold(ringInner, ringOuter, thickness, SEGMENTS);
+  // The male stem is fused to the negative body; the socket neck is fused to
+  // the positive body.  The opening gives the stem room to swing.
+  const stemLength = socketRadius * 2.4;
+  const maleStemRaw = Manifold.cylinder(stemLength, stemRadius, stemRadius, segments, true);
+  const socketStemRaw = Manifold.cylinder(stemLength, socketRadius * 0.72, socketRadius * 0.72, segments, true);
+  const openingRaw = Manifold.cylinder(
+    socketRadius * 2.2,
+    stemRadius + clearance * 1.5,
+    stemRadius + clearance * 1.5,
+    segments,
+    true
+  );
+  const maleStem = maleStemRaw.transform(transformAt(-stemLength / 2));
+  const socketStem = socketStemRaw.transform(transformAt(stemLength / 2));
+  const opening = openingRaw.transform(transformAt(-socketRadius * 0.85));
+  maleStemRaw.delete();
+  socketStemRaw.delete();
+  openingRaw.delete();
 
-  const transform = makeRingTransform(position, normal, tiltAxis, tiltDeg);
-
-  const cutter = rawCutter.transform(transform);
-  const ring   = rawRing.transform(transform);
-  rawCutter.delete();
-  rawRing.delete();
-
-  return { cutter, ring };
+  return {
+    negativeBox,
+    positiveBox,
+    ball,
+    cavity,
+    socketOuter,
+    maleStem,
+    socketStem,
+    opening,
+  };
 }
 
 /**
@@ -140,6 +166,12 @@ export function createJointManifolds(params) {
  */
 export function prepareGeometry(geometry) {
   let g = geometry.clone();
+  // STL/Three geometries often duplicate vertices at hard-normal or UV seams.
+  // mergeVertices hashes every attribute, so those extra attributes prevent a
+  // watertight index from being produced.  Boolean input only needs positions.
+  for (const name of Object.keys(g.attributes)) {
+    if (name !== 'position') g.deleteAttribute(name);
+  }
   // mergeVertices from BufferGeometryUtils creates an indexed geometry
   // by welding vertices that are within tolerance of each other.
   g = mergeVertices(g, 1e-4);
@@ -186,24 +218,46 @@ export async function processBooleans(mainGeometry, joints) {
     return [resultGeom];
   }
 
-  const ringManifolds = [];
-
-  for (const joint of joints) {
-    const { cutter, ring } = createJointManifolds(joint);
-    const newMain = mainManifold.subtract(cutter);
+  if (joints.length > 1) {
     mainManifold.delete();
-    mainManifold = newMain;
-    cutter.delete();
-    ringManifolds.push(ring);
+    throw new Error('This prototype supports one captured ball joint per export. Delete extra joints and export again.');
   }
 
-  const result = [manifoldToThreeGeom(mainManifold)];
+  preparedGeom.computeBoundingBox();
+  const size = preparedGeom.boundingBox.getSize(new THREE.Vector3());
+  const extent = Math.max(size.x, size.y, size.z) * 2 + 10;
+  const parts = createJointManifolds(joints[0], extent);
+
+  let negativeBody = mainManifold.intersect(parts.negativeBox);
+  let positiveBody = mainManifold.intersect(parts.positiveBox);
+
+  // Clear the socket envelope from the male half so the two exported shells
+  // cannot accidentally fuse where the socket wraps around the ball.
+  const clearedNegative = negativeBody.subtract(parts.socketOuter);
+  negativeBody.delete();
+  negativeBody = clearedNegative;
+
+  const maleWithStem = parts.ball.add(parts.maleStem);
+  const maleSide = negativeBody.add(maleWithStem);
+
+  const socketWithStem = parts.socketOuter.add(parts.socketStem);
+  const hollowSocket = socketWithStem.subtract(parts.cavity);
+  const socketAttached = positiveBody.add(hollowSocket);
+  const socketSide = socketAttached.subtract(parts.opening);
+
+  const result = [manifoldToThreeGeom(maleSide), manifoldToThreeGeom(socketSide)];
+
   mainManifold.delete();
-
-  for (const ring of ringManifolds) {
-    result.push(manifoldToThreeGeom(ring));
-    ring.delete();
-  }
+  negativeBody.delete();
+  positiveBody.delete();
+  maleWithStem.delete();
+  maleSide.delete();
+  socketWithStem.delete();
+  hollowSocket.delete();
+  socketAttached.delete();
+  socketSide.delete();
+  for (const value of Object.values(parts)) value.delete();
 
   return result;
 }
+
