@@ -10,13 +10,15 @@ export class JointManager {
   }
 
   addJoint(surfacePoint, surfaceNormal) {
-    const measuredRadius = this.viewer.measureCrossSection(surfacePoint, surfaceNormal);
+    const section = this.viewer.measureCrossSection(surfacePoint, surfaceNormal);
 
     const joint = {
       id: nextId++,
-      position: surfacePoint.clone(),
+      // Boolean geometry belongs at the interior cross-section center, not on
+      // the triangle that happened to be clicked.
+      position: section.center.clone(),
       normal: surfaceNormal.clone().normalize(),
-      measuredRadius,
+      measuredRadius: section.radius,
       scale: 1.0,
       thickness: 2.0,
       tiltAxis: 'x',
@@ -113,3 +115,4 @@ export class JointManager {
     }));
   }
 }
+

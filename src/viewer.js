@@ -206,7 +206,7 @@ export class Viewer {
 
     const mesh = new THREE.Mesh(geom, mat);
 
-    // Orient ring: Z-axis → normal
+    // Orient ring: Z-axis â†’ normal
     const q = new THREE.Quaternion().setFromUnitVectors(
       new THREE.Vector3(0, 0, 1), normal.clone().normalize()
     );
@@ -251,7 +251,7 @@ export class Viewer {
    * Casts rays from slightly inside the mesh outward in the perpendicular plane.
    */
   measureCrossSection(surfacePoint, surfaceNormal) {
-    if (!this.meshObject) return 10;
+    if (!this.meshObject) return { radius: 10, center: surfacePoint.clone() };
 
     const N = surfaceNormal.clone().normalize();
 
@@ -293,9 +293,13 @@ export class Viewer {
       }
     }
 
-    if (distances.length === 0) return 5;
+    if (distances.length === 0) return { radius: 5, center };
     const minDist = Math.min(...distances);
-    // Clamp to reasonable range (0.5mm – 200mm)
-    return Math.max(0.5, Math.min(200, minDist * 0.95));
+    // Clamp to reasonable range (0.5mm â€“ 200mm)
+    return {
+      radius: Math.max(0.5, Math.min(200, minDist * 0.95)),
+      center,
+    };
   }
 }
+
